@@ -67,7 +67,6 @@ function Map() {
 
     useEffect(() => {
         axios.get(url).then(response => {
-            console.log(response);
             var hospitals = response.data;
             const pts = hospitals.map((hospital) => ({
                 type: "Feature",
