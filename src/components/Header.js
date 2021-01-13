@@ -7,7 +7,10 @@ class Header extends Component {
         return (
             <Navbar bg="dark" variant="dark">
                 <Navbar.Brand href="#home">
-                    HospitalGIS
+                    <img src="logo.svg" style={{
+                        width: "30px",
+                        height: "30px"
+                    }} alt="Hospital marker icon"></img> HospitalGIS
                 </Navbar.Brand>
             </Navbar>
         );

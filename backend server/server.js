@@ -74,9 +74,17 @@ app.put("/hospital/:id", function (req, response) {
 });
 
 app.post("/hospital", function (req, response) {
-    response.writeHead(200, { 'Content-Type': 'text/plain' });
-    response.end('CURRENTLY TESTING POST FOR HOSPITAL');
+    client.query('INSERT INTO hospital (name, longitude, latitude) VALUES ($1, $2, $3) RETURNING id;', [req.body.name, req.body.longitude, req.body.latitude]).then(result => {
+        response.send(result.rows);
+        response.status(200);
+        console.log('Inserted');
+    }).catch(e => { 
+        console.error(e.stack); 
+        response.status(400); 
+        response.send(e); 
+    });
 })
+
 
 app.post("/login", function (req, response) {
     response.writeHead(200, { 'Content-Type': 'text/plain' });
@@ -84,7 +92,7 @@ app.post("/login", function (req, response) {
 })
 
 app.listen(port, () => {
-    console.log(`Example app listening at http://localhost:${port}`)
+    console.log(`HospitalGIS server is listening at http://localhost:${port}`)
 })
 
 // const username = 'user1'
@@ -93,6 +101,18 @@ app.listen(port, () => {
 // const hashedStr = crypto.createHmac('sha256', hashingSecret)
 //                         .update(pass)
 //                         .digest('hex');
+
+// app.get("/hospital-last", function (req, response) {
+//     client.query("SELECT nextval('hospital_id_seq');").then(result => {
+//         console.log('GET');
+//         response.status(200); 
+//         response.send(result.rows);
+//     }).catch(e => { 
+//         console.error(e.stack); 
+//         response.status(400); 
+//         response.send(e); 
+//     });
+// });
 
 // client.query('INSERT INTO app_user (username, password) VALUES ($1, $2) ON CONFLICT (username) DO UPDATE SET password = Excluded.password;', [username, hashedStr]).then(result => {
 //     console.log(result.rows)

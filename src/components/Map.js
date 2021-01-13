@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import useSwr from "swr";
+// import useSwr, { mutate } from "swr";
 import useSupercluster from "use-supercluster";
 import Geocoder from "react-map-gl-geocoder";
 import axios from "axios";
@@ -14,7 +14,6 @@ import InteractiveMap, {
 } from "react-map-gl";
 import { ViewToggle } from "./ViewToggle";
 import EditableText from "./EditableText";
-
 import "react-map-gl-geocoder/dist/mapbox-gl-geocoder.css";
 
 function Map() {
@@ -23,7 +22,7 @@ function Map() {
         longitude: -82.828851,
         width: "100vw",
         height: "92vh",
-        zoom: 10
+        zoom: 3
     });
 
     const handleViewportChange = useCallback(
@@ -46,43 +45,49 @@ function Map() {
 
     const [selectedHospital, setSelectedHospital] = useState(null);
     const [selectedViewMode, setViewMode] = useState("capacity");
+    const [addMark, setAddMark] = useState(null);
+    const [points, setPoints] = useState([]);
+    const [newHospital, setNewHospital] = useState("");
     const mapRef = useRef();
 
-    const url = "http://localhost:8007/hospital"
-    const fetcher = (...args) => fetch(...args).then(response => response.json());
-    const { data, error } = useSwr(url, fetcher);
-
-    const hospitals = data && !error ? data : [];
+    const url = "http://localhost:8007/hospital";
 
     useEffect(() => {
         const listener = e => {
             if (e.key === "Escape") {
                 setSelectedHospital(null);
+                setAddMark(null);
             }
         };
         window.addEventListener("keydown", listener);
-
         return () => {
             window.removeEventListener("keydown", listener);
         };
     });
 
-    // get each points
-    const points = hospitals.map((hospital) => ({
-        type: "Feature",
-        properties: {
-            cluster: false,
-            hospitalID: hospital.id,
-            name: hospital.name,
-            state: hospital.state,
-            beds: (hospital.beds > 0 ? parseInt(hospital.beds) : 0),
-            covid_cases: parseInt(hospital.covid_cases),
-        },
-        geometry: {
-            type: "Point",
-            coordinates: [parseFloat(hospital.longitude), parseFloat(hospital.latitude)]
-        }
-    }));
+    useEffect(() => {
+        axios.get(url).then(response => {
+            console.log(response);
+            var hospitals = response.data;
+            const pts = hospitals.map((hospital) => ({
+                type: "Feature",
+                properties: {
+                    cluster: false,
+                    hospitalID: hospital.id,
+                    name: hospital.name,
+                    state: hospital.state,
+                    beds: (hospital.beds > 0 ? parseInt(hospital.beds) : 0),
+                    covid_cases: (hospital.covid_cases > 0 ? parseInt(hospital.covid_cases) : 0),
+                },
+                geometry: {
+                    type: "Point",
+                    coordinates: [parseFloat(hospital.longitude), parseFloat(hospital.latitude)]
+                }
+            }))
+            setPoints(pts);
+        }).catch((e) => alert(e));
+    }, []);
+
 
     // get total cases/capacity
     var totalCap = 0;
@@ -103,7 +108,7 @@ function Map() {
     const bounds = mapRef.current ? mapRef.current.getMap().getBounds().toArray().flat() : null;
 
     // get clusters
-    const { clusters, supercluster } = useSupercluster({
+    var { clusters, supercluster } = useSupercluster({
         points,
         zoom: viewport.zoom,
         bounds,
@@ -120,13 +125,6 @@ function Map() {
             },
         }
     });
-
-    //create your forceUpdate hook
-    // function useForceUpdate() {
-    //     const [rend, setRend] = useState(0);
-    //     return () => setRend(rend => rend + 1); // update the state to force render
-    // }
-
 
     const geolocateStyle = {
         position: 'absolute',
@@ -157,12 +155,8 @@ function Map() {
     };
 
     const handleUpdate = (newData, fieldName) => {
-        // console.log(`newdata : ${newData} on ${fieldName}`);
-
         const cases = (fieldName === 'cases' ? newData : selectedHospital.properties.covid_cases)
         const beds = (fieldName === 'beds' ? newData : selectedHospital.properties.beds)
-
-        // console.log(`cases : ${cases} beds: ${beds}`);
 
         const id = selectedHospital.properties.hospitalID
 
@@ -174,18 +168,21 @@ function Map() {
 
         axios.put(`${url}/${id}`, toSend).then(result => {
             console.log(result.data);
-            console.log('aaaa');
-            // useForceUpdate();
         }).catch(e => {
             console.error(e.stack);
         });
     }
 
+    const handleClick = (e) => {
+        e.stopPropagation();
+        if (e.target.className === "overlays") setAddMark([e.lngLat[0], e.lngLat[1]]);
+    };
+
     return (
         <div>
             <ViewToggle
                 selected={selectedViewMode}
-                toggleSelected={(e) => {
+                toggleSelected={() => {
                     setViewMode((selectedViewMode === "capacity" ? "cases" : "capacity"));
                 }}
             >
@@ -196,6 +193,7 @@ function Map() {
                 mapboxApiAccessToken={process.env.REACT_APP_MAPBOX_TOKEN}
                 mapStyle="mapbox://styles/zeta762/ckj5ne85s4gnb19njp73wq4fp"
                 onViewportChange={viewport => { setViewport(viewport) }}
+                onClick={handleClick}
                 maxZoom={20}
                 ref={mapRef}
             >
@@ -205,7 +203,6 @@ function Map() {
                     mapboxApiAccessToken={process.env.REACT_APP_MAPBOX_TOKEN}
                     position="top-right"
                 />
-
 
                 <div style={geolocateStyle}>
                     <GeolocateControl />
@@ -227,7 +224,7 @@ function Map() {
 
                     // render cluster marker
                     if (properties.cluster) {
-                        const size = (selectedViewMode === "capacity" ? `${47 + (properties.capacity / (totalCap + 1)) * 35}px` : `${45 + (properties.totalCases / (allCases + 1)) * 35}px`)
+                        const size = (selectedViewMode === "capacity" ? `${50 + (properties.capacity / (totalCap + 1)) * 40}px` : `${50 + (properties.totalCases / (allCases + 1)) * 40}px`);
                         return (
                             <Marker
                                 key={cluster.id}
@@ -240,7 +237,9 @@ function Map() {
                                         width: size,
                                         height: size
                                     }}
-                                    onClick={() => {
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
                                         const expandZoom = Math.min(supercluster.getClusterExpansionZoom(cluster.id), 20);
 
                                         setViewport({
@@ -251,6 +250,7 @@ function Map() {
                                             transitionInterpolator: new FlyToInterpolator({ speed: 1.2 }),
                                             transitionDuration: "auto"
                                         })
+                                        setAddMark(null);
                                     }}>
                                     {(selectedViewMode === "capacity" ? properties.capacity : properties.totalCases)}
                                 </div>
@@ -266,6 +266,7 @@ function Map() {
                         >
 
                             <button className="marker-btn" onClick={(e) => {
+                                e.stopPropagation();
                                 e.preventDefault();
                                 if (!cluster.properties.cluster) setSelectedHospital(cluster);
                             }}>
@@ -283,6 +284,8 @@ function Map() {
                         onClose={() => {
                             setSelectedHospital(null);
                         }}
+
+                        onClick={() => console.log(selectedHospital)}
                         closeOnClick={false}
                         tipSize={5}
                         anchor="top"
@@ -295,6 +298,54 @@ function Map() {
                             <br />
                             <span># of cases: </span>
                             <EditableText fieldName="cases" updateHandler={handleUpdate} text={selectedHospital.properties.covid_cases} />
+                        </div>
+                    </Popup>
+                ) : null}
+
+
+                {!selectedHospital && addMark ? (
+                    <Popup
+                        latitude={addMark[1]}
+                        longitude={addMark[0]}
+                        onClose={() => {
+                            setAddMark(null);
+                            setNewHospital("");
+                        }}
+                        closeOnClick={false}
+                        tipSize={30}
+                        anchor="top"
+                    >
+
+                        <div>
+                            <div>Add marker?</div>
+                            <input name="newHospital" onChange={e => { setNewHospital(e.target.value); console.log(newHospital) }} placeholder="Hospital name"></input>
+                            <button onClick={(e) => {
+                                e.stopPropagation();
+                                axios.post(url, {
+                                    name: newHospital,
+                                    longitude: parseFloat(addMark[0]),
+                                    latitude: parseFloat(addMark[1])
+                                }).then(response => {
+                                    // build
+                                    const q = {
+                                        type: "Feature",
+                                        properties: {
+                                            cluster: false,
+                                            hospitalID: response.data.id,
+                                            name: newHospital,
+                                            state: null,
+                                            beds: 0,
+                                            covid_cases: 10,
+                                        },
+                                        geometry: {
+                                            type: "Point",
+                                            coordinates: [parseFloat(addMark[0]), parseFloat(addMark[1])]
+                                        }
+                                    }
+                                    setPoints(points => [...points, q])
+                                    setAddMark(null);
+                                })
+                            }}>ADD</button>
                         </div>
                     </Popup>
                 ) : null}
